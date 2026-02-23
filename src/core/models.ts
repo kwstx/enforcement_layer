@@ -98,6 +98,24 @@ export interface RiskProfile {
     recommendation: 'PROCEED' | 'HOLD' | 'BLOCK';
 }
 
+export interface BehaviorVector {
+    intentDeviationRisk: number; // 0.0 to 1.0
+    scopeDriftRisk: number; // 0.0 to 1.0
+    apiNoveltyRisk: number; // 0.0 to 1.0
+    sensitiveDataExposureRisk: number; // 0.0 to 1.0
+    cooperativeInstabilityRisk: number; // 0.0 to 1.0
+    dataVolumeRisk: number; // 0.0 to 1.0
+}
+
+export interface AnomalyToleranceThresholds {
+    warn: number;
+    slow: number;
+    requireApproval: number;
+    halt: number;
+}
+
+export type AnomalyMitigationAction = 'NONE' | 'WARN' | 'SLOW' | 'REQUIRE_APPROVAL' | 'HALT';
+
 export interface ActionContext {
     actionId: string;
     agentId: string;
@@ -108,5 +126,7 @@ export interface ActionContext {
     status: EnforcementState;
     violations: Violation[];
     riskProfile?: RiskProfile;
+    predictedBehaviorVector?: BehaviorVector;
     executionTrace?: ExecutionStep[];
+    anomalyApprovalGranted?: boolean;
 }

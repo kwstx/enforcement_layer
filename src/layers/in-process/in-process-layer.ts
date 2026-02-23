@@ -1,10 +1,22 @@
 import { BaseEnforcementLayer } from '../base-layer';
-import { ActionContext, EnforcementState, ViolationCategory, ViolationSeverity } from '../../core/models';
+import { ActionContext, EnforcementState, ViolationCategory, ViolationSeverity, InProcessMonitorPolicy } from '../../core/models';
 import { EnforcementEvents } from '../../core/event-bus';
+import { InProcessMonitor } from './in-process-monitor';
 
 export class InProcessLayer extends BaseEnforcementLayer {
     getName(): string {
         return 'InProcessMonitoring';
+    }
+
+    private getDefaultPolicy(): InProcessMonitorPolicy {
+        return {
+            declaredAuthorityScope: ['read:public', 'read:user_profile', 'write:internal_logs'],
+            allowedApis: ['google.auth.v1', 'internal.storage.v1', 'openai.api.v1'],
+            maxRecordsPerStep: 50,
+            maxCumulativeSensitiveReads: 200,
+            minCooperativeStability: 0.7,
+            maxCooperativeConflict: 0.3
+        };
     }
 
     async process(context: ActionContext): Promise<ActionContext> {
@@ -17,9 +29,26 @@ export class InProcessLayer extends BaseEnforcementLayer {
 
         console.log(`[${this.getName()}] Monitoring action: ${context.actionId}`);
 
-        // Simulate real-time monitoring
-        // In a real scenario, this might be called multiple times or listen to events
-        if (context.params.resourceUsage > 100) {
+        const policy = (context.params['inProcessPolicy'] as InProcessMonitorPolicy) || this.getDefaultPolicy();
+        const monitor = new InProcessMonitor(context, policy);
+
+        // Simulate multi-step execution if steps are provided in params for demo purposes
+        const simulatedSteps = context.params['simulatedSteps'];
+        if (simulatedSteps && Array.isArray(simulatedSteps)) {
+            for (const step of simulatedSteps) {
+                console.log(`[${this.getName()}] Recording step: ${step.stepId}`);
+                await monitor.recordStep(step);
+
+                if (context.status === EnforcementState.SUSPENDED) {
+                    console.warn(`[${this.getName()}] Execution SUSPENDED due to violations at step: ${step.stepId}`);
+                    break;
+                }
+            }
+        }
+
+        // Basic check for existing params if no steps provided
+        const resourceUsage = context.params['resourceUsage'];
+        if (typeof resourceUsage === 'number' && resourceUsage > 100) {
             const violation = {
                 id: `v-proc-${Date.now()}`,
                 timestamp: new Date(),
@@ -27,16 +56,11 @@ export class InProcessLayer extends BaseEnforcementLayer {
                 severity: ViolationSeverity.MEDIUM,
                 description: 'Excessive resource usage detected during execution.',
                 sourceLayer: this.getName(),
-                metadata: { resourceUsage: context.params.resourceUsage }
+                metadata: { resourceUsage }
             };
 
             context.violations.push(violation);
             this.eventBus.emitViolation(context.actionId, violation);
-
-            // We might choose to suspend if it's high severity
-            if (violation.severity === ViolationSeverity.CRITICAL) {
-                context.status = EnforcementState.SUSPENDED;
-            }
         }
 
         return context;
