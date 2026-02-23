@@ -1,8 +1,16 @@
 import { BaseEnforcementLayer } from '../base-layer';
 import { ActionContext, EnforcementState, ViolationCategory, ViolationSeverity } from '../../core/models';
 import { EnforcementEvents } from '../../core/event-bus';
+import { RemediationEngine } from '../remediation/remediation-engine';
 
 export class PostExecutionLayer extends BaseEnforcementLayer {
+    private remediationEngine: RemediationEngine;
+
+    constructor() {
+        super();
+        this.remediationEngine = new RemediationEngine();
+    }
+
     getName(): string {
         return 'PostExecutionAuditing';
     }
@@ -31,7 +39,7 @@ export class PostExecutionLayer extends BaseEnforcementLayer {
             this.eventBus.emitViolation(context.actionId, violation);
 
             // Auto-remediation trigger
-            this.triggerRemediation(context);
+            await this.triggerRemediation(context);
         } else {
             context.status = EnforcementState.AUDIT_PASSED;
         }
@@ -40,9 +48,10 @@ export class PostExecutionLayer extends BaseEnforcementLayer {
         return context;
     }
 
-    private triggerRemediation(context: ActionContext) {
+    private async triggerRemediation(context: ActionContext) {
         console.log(`[${this.getName()}] Starting automatic remediation for violation...`);
-        context.status = EnforcementState.REMEDIATED;
         this.eventBus.emit(EnforcementEvents.REMEDIATION_TRIGGERED, context);
+        await this.remediationEngine.remediate(context);
+        this.eventBus.emit(EnforcementEvents.REMEDIATION_COMPLETED, context);
     }
 }

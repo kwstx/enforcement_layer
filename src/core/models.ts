@@ -35,6 +35,76 @@ export interface Violation {
     metadata: Record<string, any>;
 }
 
+export type SystemChangeType = 'CREATE' | 'UPDATE' | 'DELETE' | 'PERMISSION_CHANGE' | 'CONFIG_CHANGE';
+
+export interface SystemChangeRecord {
+    changeId: string;
+    timestamp: Date;
+    type: SystemChangeType;
+    target: string;
+    initiatedBy: string;
+    reversible: boolean;
+    unauthorized?: boolean;
+    previousValue?: unknown;
+    newValue?: unknown;
+    metadata?: Record<string, unknown>;
+}
+
+export type RollbackTransactionStatus = 'PENDING' | 'APPLIED' | 'SKIPPED' | 'FAILED';
+
+export interface RollbackTraceEntry {
+    timestamp: Date;
+    actor: string;
+    status: RollbackTransactionStatus;
+    detail: string;
+    metadata?: Record<string, unknown>;
+}
+
+export interface RollbackTransaction {
+    transactionId: string;
+    actionId: string;
+    changeId: string;
+    target: string;
+    rollbackAction: string;
+    status: RollbackTransactionStatus;
+    startedAt: Date;
+    completedAt?: Date;
+    trace: RollbackTraceEntry[];
+}
+
+export interface Stakeholder {
+    id: string;
+    role: string;
+    contact: string;
+}
+
+export interface StakeholderNotification {
+    notificationId: string;
+    stakeholderId: string;
+    channel: string;
+    timestamp: Date;
+    message: string;
+    acknowledged: boolean;
+}
+
+export interface TrustRecalibration {
+    previousCoefficient: number;
+    updatedCoefficient: number;
+    delta: number;
+    reason: string;
+    timestamp: Date;
+}
+
+export interface RemediationReport {
+    actionId: string;
+    generatedAt: Date;
+    confirmedViolationIds: string[];
+    rollbackTransactions: RollbackTransaction[];
+    notifications: StakeholderNotification[];
+    trustRecalibration: TrustRecalibration;
+    safeRollback: boolean;
+}
+
 export interface DataAccessEvent {
     resource: string;
     operation: 'read' | 'write' | 'delete';
@@ -131,6 +201,10 @@ export interface ActionContext {
     executionTrace?: ExecutionStep[];
     anomalyApprovalGranted?: boolean;
     metadata?: Record<string, any>;
+    systemChanges?: SystemChangeRecord[];
+    stakeholders?: Stakeholder[];
+    trustCoefficient?: number;
+    remediationReport?: RemediationReport;
 }
 
 export enum InterventionType {

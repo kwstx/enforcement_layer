@@ -28,6 +28,11 @@ export class GuardrailOrchestrator {
             console.warn(`[Orchestrator] Violation detected for action ${actionId}: ${violation.description} (${violation.severity})`);
             const context = this.activeActions.get(actionId);
             if (context) {
+                // Ensure violation is in the context
+                if (!context.violations.find(v => v.id === violation.id)) {
+                    context.violations.push(violation);
+                }
+
                 // Trigger adaptive intervention immediately when violation is detected
                 await this.interventionLayer.process(context);
 
@@ -40,6 +45,11 @@ export class GuardrailOrchestrator {
         this.eventBus.on(EnforcementEvents.REMEDIATION_TRIGGERED, (context: ActionContext) => {
             console.log(`[Orchestrator] Remediation in progress for action ${context.actionId}`);
         });
+
+        this.eventBus.on(EnforcementEvents.REMEDIATION_COMPLETED, (context: ActionContext) => {
+            const rollbackCount = context.remediationReport?.rollbackTransactions.length ?? 0;
+            console.log(`[Orchestrator] Remediation completed for action ${context.actionId}. Rollback transactions: ${rollbackCount}`);
+        });
     }
 
     public async coordinate(agentId: string, intent: string, params: Record<string, any>): Promise<ActionContext> {
@@ -49,9 +59,13 @@ export class GuardrailOrchestrator {
             agentId,
             intent,
             params,
+            startTime: new Date(),
             status: EnforcementState.PENDING,
             violations: [],
-            interventions: []
+            interventions: [],
+            systemChanges: Array.isArray(params.systemChanges) ? params.systemChanges : undefined,
+            stakeholders: Array.isArray(params.stakeholders) ? params.stakeholders : undefined,
+            trustCoefficient: typeof params.trustCoefficient === 'number' ? params.trustCoefficient : 1.0
         };
 
         this.activeActions.set(actionId, context);
