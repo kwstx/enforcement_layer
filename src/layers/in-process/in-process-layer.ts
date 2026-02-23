@@ -39,7 +39,7 @@ export class InProcessLayer extends BaseEnforcementLayer {
                 console.log(`[${this.getName()}] Recording step: ${step.stepId}`);
                 await monitor.recordStep(step);
 
-                if (context.status === EnforcementState.SUSPENDED) {
+                if ((monitor.getContext().status as EnforcementState) === EnforcementState.SUSPENDED) {
                     console.warn(`[${this.getName()}] Execution SUSPENDED due to violations at step: ${step.stepId}`);
                     break;
                 }

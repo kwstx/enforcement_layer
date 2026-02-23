@@ -1,0 +1,1 @@
+﻿src/layers/in-process/in-process-layer.ts(42,21): error TS2367: This comparison appears to be unintentional because the types 'EnforcementState.EXECUTING' and 'EnforcementState.SUSPENDED' have no overlap.

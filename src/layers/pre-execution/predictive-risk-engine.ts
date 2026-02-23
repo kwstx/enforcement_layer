@@ -1,4 +1,4 @@
-import { ActionContext, RiskProfile, SynergyShift, PropagationEffect, PolicyForecast } from '../../core/models';
+import { ActionContext, RiskProfile, SynergyShift, PropagationEffect, PolicyForecast, BehaviorVector } from '../../core/models';
 
 export class PredictiveRiskEngine {
     /**
@@ -27,6 +27,23 @@ export class PredictiveRiskEngine {
             policyForecasts,
             realWorldConsequences,
             recommendation
+        };
+    }
+
+    public predictBehaviorVector(context: ActionContext): BehaviorVector {
+        const intentLower = context.intent.toLowerCase();
+        const includesHighImpactVerb = ['delete', 'remove', 'reset', 'shutdown'].some(v => intentLower.includes(v));
+        const trustedAgent = context.agentId.startsWith('trusted-');
+
+        const clamp = (value: number) => Math.max(0, Math.min(1, value));
+
+        return {
+            intentDeviationRisk: includesHighImpactVerb ? 0.35 : 0.12,
+            scopeDriftRisk: trustedAgent ? 0.1 : 0.25,
+            apiNoveltyRisk: context.params.networkAccess ? 0.45 : 0.15,
+            sensitiveDataExposureRisk: context.params.privacySensitive ? 0.6 : 0.2,
+            cooperativeInstabilityRisk: context.params.networkAccess ? 0.35 : 0.15,
+            dataVolumeRisk: clamp(context.params.scaling ? 0.55 : 0.25)
         };
     }
 

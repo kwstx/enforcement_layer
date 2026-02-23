@@ -125,8 +125,30 @@ export interface ActionContext {
     endTime?: Date;
     status: EnforcementState;
     violations: Violation[];
+    interventions: Intervention[];
     riskProfile?: RiskProfile;
     predictedBehaviorVector?: BehaviorVector;
     executionTrace?: ExecutionStep[];
     anomalyApprovalGranted?: boolean;
+    metadata?: Record<string, any>;
+}
+
+export enum InterventionType {
+    REDUCE_PERMISSIONS = 'REDUCE_PERMISSIONS',
+    NARROW_SCOPE = 'NARROW_SCOPE',
+    REQUIRE_VERIFICATION = 'REQUIRE_VERIFICATION',
+    ESCALATE_TO_HUMAN = 'ESCALATE_TO_HUMAN',
+    SUSPEND_EXECUTION = 'SUSPEND_EXECUTION',
+    TERMINATE_SESSION = 'TERMINATE_SESSION'
+}
+
+export interface Intervention {
+    id: string;
+    timestamp: Date;
+    type: InterventionType;
+    description: string;
+    reason: string;
+    severity: ViolationSeverity;
+    applied: boolean;
+    metadata: Record<string, any>;
 }

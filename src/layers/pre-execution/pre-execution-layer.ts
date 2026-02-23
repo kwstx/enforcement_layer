@@ -23,6 +23,7 @@ export class PreExecutionLayer extends BaseEnforcementLayer {
         // 1. Predictive Risk Analysis
         const riskProfile = await this.riskEngine.evaluate(context);
         context.riskProfile = riskProfile;
+        context.predictedBehaviorVector = this.riskEngine.predictBehaviorVector(context);
 
         if (riskProfile.recommendation === 'BLOCK') {
             const violation = {

@@ -1,14 +1,16 @@
-import { ActionContext, EnforcementState, Violation } from '../core/models';
+import { ActionContext, EnforcementState, Violation, Intervention } from '../core/models';
 import { EnforcementEventBus, EnforcementEvents } from '../core/event-bus';
 import { PreExecutionLayer } from '../layers/pre-execution/pre-execution-layer';
 import { InProcessLayer } from '../layers/in-process/in-process-layer';
 import { PostExecutionLayer } from '../layers/post-execution/post-execution-layer';
+import { AdaptiveInterventionLayer } from '../layers/intervention/adaptive-intervention-layer';
 
 export class GuardrailOrchestrator {
     private eventBus: EnforcementEventBus;
     private preExecution: PreExecutionLayer;
     private inProcess: InProcessLayer;
     private postExecution: PostExecutionLayer;
+    private interventionLayer: AdaptiveInterventionLayer;
     private activeActions: Map<string, ActionContext> = new Map();
 
     constructor() {
@@ -16,17 +18,22 @@ export class GuardrailOrchestrator {
         this.preExecution = new PreExecutionLayer();
         this.inProcess = new InProcessLayer();
         this.postExecution = new PostExecutionLayer();
+        this.interventionLayer = new AdaptiveInterventionLayer();
 
         this.setupEventHandlers();
     }
 
     private setupEventHandlers() {
-        this.eventBus.on(EnforcementEvents.VIOLATION_DETECTED, ({ actionId, violation }: { actionId: string, violation: Violation }) => {
+        this.eventBus.on(EnforcementEvents.VIOLATION_DETECTED, async ({ actionId, violation }: { actionId: string, violation: Violation }) => {
             console.warn(`[Orchestrator] Violation detected for action ${actionId}: ${violation.description} (${violation.severity})`);
             const context = this.activeActions.get(actionId);
-            if (context && violation.severity === 'CRITICAL') {
-                console.error(`[Orchestrator] Critical violation! Halting/Reversing action ${actionId}`);
-                // Logic to halt execution could go here
+            if (context) {
+                // Trigger adaptive intervention immediately when violation is detected
+                await this.interventionLayer.process(context);
+
+                if (violation.severity === 'CRITICAL') {
+                    console.error(`[Orchestrator] Critical violation! Action ${actionId} state is now ${context.status}`);
+                }
             }
         });
 
@@ -43,7 +50,8 @@ export class GuardrailOrchestrator {
             intent,
             params,
             status: EnforcementState.PENDING,
-            violations: []
+            violations: [],
+            interventions: []
         };
 
         this.activeActions.set(actionId, context);
@@ -58,6 +66,10 @@ export class GuardrailOrchestrator {
 
             // 2. In-Process
             context = await this.inProcess.process(context);
+            if (context.status === EnforcementState.SUSPENDED) {
+                context.endTime = new Date();
+                return context;
+            }
 
             // Simulate execution time
             await new Promise(resolve => setTimeout(resolve, 500));

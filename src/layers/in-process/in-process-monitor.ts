@@ -1,16 +1,27 @@
-import { ActionContext, ExecutionStep, InProcessMonitorPolicy, Violation, ViolationCategory, ViolationSeverity, EnforcementState } from '../../core/models';
+import {
+    ActionContext,
+    ExecutionStep,
+    InProcessMonitorPolicy,
+    Violation,
+    ViolationCategory,
+    ViolationSeverity,
+    EnforcementState
+} from '../../core/models';
 import { EnforcementEventBus, EnforcementEvents } from '../../core/event-bus';
+import { AnomalyDetectionEngine } from './anomaly-detection-engine';
 
 export class InProcessMonitor {
     private context: ActionContext;
     private policy: InProcessMonitorPolicy;
     private eventBus: EnforcementEventBus;
     private cumulativeSensitiveReads: number = 0;
+    private anomalyEngine: AnomalyDetectionEngine;
 
     constructor(context: ActionContext, policy: InProcessMonitorPolicy) {
         this.context = context;
         this.policy = policy;
         this.eventBus = EnforcementEventBus.getInstance();
+        this.anomalyEngine = new AnomalyDetectionEngine(context.params['anomalyThresholds'], context.params['anomalySlowDelayMs']);
 
         // Initialize cumulative reads from existing trace if any
         if (this.context.executionTrace) {
@@ -121,6 +132,59 @@ export class InProcessMonitor {
             }
         }
 
+        // 6. Deviation from pre-execution predicted behavior vector
+        const anomalyDecision = this.anomalyEngine.evaluate(this.context, step, this.policy);
+        const deviationMetadata = {
+            deviationScore: anomalyDecision.deviationScore,
+            threshold: anomalyDecision.threshold,
+            action: anomalyDecision.action,
+            predictedVector: anomalyDecision.predicted,
+            liveVector: anomalyDecision.live,
+            stepId: step.stepId
+        };
+
+        if (anomalyDecision.action === 'WARN') {
+            violations.push(this.createViolation(
+                ViolationCategory.ANOMALY,
+                ViolationSeverity.MEDIUM,
+                `Anomaly warning: behavior deviation score ${anomalyDecision.deviationScore.toFixed(2)} exceeded warning threshold ${anomalyDecision.threshold?.toFixed(2)}.`,
+                deviationMetadata
+            ));
+        }
+
+        if (anomalyDecision.action === 'SLOW') {
+            violations.push(this.createViolation(
+                ViolationCategory.ANOMALY,
+                ViolationSeverity.MEDIUM,
+                `Execution throttled: deviation score ${anomalyDecision.deviationScore.toFixed(2)} exceeded slow threshold ${anomalyDecision.threshold?.toFixed(2)}.`,
+                deviationMetadata
+            ));
+            await this.anomalyEngine.enforceDelayIfNeeded('SLOW');
+        }
+
+        if (anomalyDecision.action === 'REQUIRE_APPROVAL') {
+            const approved = this.isStepAnomalyApproved(step.stepId);
+            if (!approved) {
+                violations.push(this.createViolation(
+                    ViolationCategory.ANOMALY,
+                    ViolationSeverity.HIGH,
+                    `Manual approval required: deviation score ${anomalyDecision.deviationScore.toFixed(2)} exceeded approval threshold ${anomalyDecision.threshold?.toFixed(2)}.`,
+                    deviationMetadata
+                ));
+                this.context.status = EnforcementState.SUSPENDED;
+            }
+        }
+
+        if (anomalyDecision.action === 'HALT') {
+            violations.push(this.createViolation(
+                ViolationCategory.ANOMALY,
+                ViolationSeverity.CRITICAL,
+                `Execution halted: deviation score ${anomalyDecision.deviationScore.toFixed(2)} exceeded halt threshold ${anomalyDecision.threshold?.toFixed(2)}.`,
+                deviationMetadata
+            ));
+            this.context.status = EnforcementState.SUSPENDED;
+        }
+
         // Record violations in context and emit events
         if (violations.length > 0) {
             this.context.violations.push(...violations);
@@ -167,5 +231,18 @@ export class InProcessMonitor {
 
     public getContext(): ActionContext {
         return this.context;
+    }
+
+    private isStepAnomalyApproved(stepId: string): boolean {
+        if (this.context.anomalyApprovalGranted === true) {
+            return true;
+        }
+
+        const approvedSteps = this.context.params['anomalyApprovedSteps'];
+        if (approvedSteps === '*') {
+            return true;
+        }
+
+        return Array.isArray(approvedSteps) && approvedSteps.includes(stepId);
     }
 }
